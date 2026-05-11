@@ -18,39 +18,39 @@ import kotlinx.coroutines.launch
 /**
  * State holder για την Contacts screen.
  *
- * Λειτουργίες:
- * - Φόρτωση όλων των επαφών του χρήστη
- * - Αναζήτηση επαφών (με LIKE query)
- * - Δημιουργία/επεξεργασία/διαγραφή επαφής
+ * Λαμβάνει το userId από [setUserId] (καλείται από ElderConnectApp.kt μέσω
+ * LaunchedEffect), αποφεύγοντας εξάρτηση από repository.currentUser που
+ * δεν υπάρχει στο repository.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ContactsViewModel(
     private val repository: ElderConnectRepository
 ) : ViewModel() {
 
+    private val _userId = MutableStateFlow<Long?>(null)
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
-    private val currentUser = repository.currentUser.stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
-        initialValue = null
-    )
+    /**
+     * Ορίζει το Room user ID. Καλείται από ElderConnectApp.kt σε LaunchedEffect(localUser?.id).
+     */
+    fun setUserId(id: Long) {
+        _userId.value = id
+    }
 
     /**
-     * Όλες οι επαφές του χρήστη, φιλτραρισμένες με τον search query.
-     * Συνδυάζει 2 flows: τον user και το search query.
+     * Λίστα επαφών, φιλτραρισμένη με search query.
      */
     val contacts: StateFlow<List<Contact>> = combine(
-        currentUser,
+        _userId,
         _searchQuery
-    ) { user, query ->
-        Pair(user, query)
-    }.flatMapLatest { (user, query) ->
+    ) { userId, query ->
+        Pair(userId, query)
+    }.flatMapLatest { (userId, query) ->
         when {
-            user == null -> flowOf(emptyList())
-            query.isBlank() -> repository.getContactsByUser(user.id)
-            else -> repository.searchContacts(user.id, query)
+            userId == null -> flowOf(emptyList())
+            query.isBlank() -> repository.getContactsByUser(userId)
+            else -> repository.searchContacts(userId, query)
         }
     }.stateIn(
         scope = viewModelScope,
@@ -60,21 +60,6 @@ class ContactsViewModel(
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
-    }
-
-    fun addContact(name: String, relationship: String, phone: String) {
-        viewModelScope.launch {
-            val user = currentUser.value ?: return@launch
-            repository.insertContact(
-                Contact(
-                    userId = user.id,
-                    name = name,
-                    relationship = relationship,
-                    phoneNumber = phone,
-                    isFavorite = false
-                )
-            )
-        }
     }
 
     fun toggleFavorite(contact: Contact) {

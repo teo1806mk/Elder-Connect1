@@ -51,6 +51,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Root composable του app.
+ * Αν ο χρήστης δεν είναι logged in → AuthNavGraph (login/register).
+ * Αν είναι logged in → MainAppNavGraph (το κύριο app).
  */
 @Composable
 fun ElderConnectApp() {
@@ -60,7 +62,7 @@ fun ElderConnectApp() {
     if (currentUser == null) {
         AuthNavGraph(
             authViewModel = authViewModel,
-            onAuthSuccess = { /* το currentUser θα γίνει non-null */ }
+            onAuthSuccess = { /* currentUser γίνεται non-null, recompose αυτόματα */ }
         )
     } else {
         MainAppNavGraph(authViewModel = authViewModel)
@@ -79,9 +81,16 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
     val authProfile by authViewModel.currentUser.collectAsStateWithLifecycle()
     val localUser by sessionViewModel.localUser.collectAsStateWithLifecycle()
 
-    // Συγχρονισμός: όταν αλλάζει το cloud profile, sync με Room
+    // ─── FIX #1: Συγχρονισμός — onLoginSuccess δέχεται μόνο UserProfile ───────
+    // Το uid εξάγεται εσωτερικά από profile.uid (καλύπτει Firebase Auth + Elder)
     LaunchedEffect(authProfile) {
         authProfile?.let { sessionViewModel.onLoginSuccess(it) }
+    }
+
+    // ─── FIX #2: Ενημέρωση HomeViewModel με τον τρέχοντα user ─────────────────
+    val homeVm: HomeViewModel = viewModel(factory = factory)
+    LaunchedEffect(localUser) {
+        localUser?.let { homeVm.setCurrentUser(it) }
     }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -94,8 +103,6 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
         authProfile?.role?.let { UserRole.fromKey(it) } ?: UserRole.USER
     }
 
-    val homeVm: HomeViewModel = viewModel(factory = factory)
-
     val hideTopBar = currentRoute in listOf(
         ElderRoute.AddContact.route,
         ElderRoute.EditContact.route,
@@ -104,7 +111,7 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
         ElderRoute.CreateElder.route
     )
 
-    // Αν δεν έχουμε ακόμα localUser, περιμένουμε
+    // Δείχνουμε loading spinner μέχρι να ολοκληρωθεί ο Room sync
     if (localUser == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
@@ -151,9 +158,7 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                             )
                         },
                         navigationIcon = {
-                            IconButton(onClick = {
-                                scope.launch { drawerState.open() }
-                            }) {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
                                 Icon(
                                     imageVector = Icons.Filled.Menu,
                                     contentDescription = "Μενού",
@@ -173,6 +178,7 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                 startDestination = ElderRoute.Home.route,
                 modifier = Modifier.padding(padding)
             ) {
+                // ─── Home ─────────────────────────────────────────────────────
                 composable(ElderRoute.Home.route) {
                     HomeScreen(
                         viewModel = homeVm,
@@ -197,8 +203,15 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                     )
                 }
 
+                // ─── Contacts ─────────────────────────────────────────────────
                 composable(ElderRoute.Contacts.route) {
                     val vm: ContactsViewModel = viewModel(factory = factory)
+
+                    // ─── FIX #3: Ενημέρωση ContactsViewModel με το userId ────
+                    LaunchedEffect(localUser?.id) {
+                        localUser?.id?.let { vm.setUserId(it) }
+                    }
+
                     ContactsScreen(
                         viewModel = vm,
                         onContactClick = { c ->
@@ -213,6 +226,7 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                     )
                 }
 
+                // ─── News ─────────────────────────────────────────────────────
                 composable(ElderRoute.News.route) {
                     val vm: NewsViewModel = viewModel(factory = factory)
                     NewsScreen(
@@ -223,6 +237,7 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                     )
                 }
 
+                // ─── Mood Check ───────────────────────────────────────────────
                 composable(ElderRoute.MoodCheck.route) {
                     val vm: MoodViewModel = viewModel(factory = factory)
                     MoodCheckScreen(
@@ -236,8 +251,15 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                     )
                 }
 
+                // ─── Add Contact ──────────────────────────────────────────────
                 composable(ElderRoute.AddContact.route) {
                     val vm: AddEditContactViewModel = viewModel(factory = factory)
+
+                    // ─── FIX #4: Δίνουμε roomUserId στο ViewModel ────────────
+                    LaunchedEffect(localUser?.id) {
+                        localUser?.id?.let { vm.setRoomUserId(it) }
+                    }
+
                     AddEditContactScreen(
                         viewModel = vm,
                         contactId = null,
@@ -246,12 +268,19 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                     )
                 }
 
+                // ─── Edit Contact ─────────────────────────────────────────────
                 composable(
                     route = ElderRoute.EditContact.route,
                     arguments = listOf(navArgument("contactId") { type = NavType.LongType })
                 ) { backStack ->
                     val contactId = backStack.arguments?.getLong("contactId")
                     val vm: AddEditContactViewModel = viewModel(factory = factory)
+
+                    // ─── FIX #4 (edit mode): Δίνουμε roomUserId ──────────────
+                    LaunchedEffect(localUser?.id) {
+                        localUser?.id?.let { vm.setRoomUserId(it) }
+                    }
+
                     AddEditContactScreen(
                         viewModel = vm,
                         contactId = contactId,
@@ -260,6 +289,7 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                     )
                 }
 
+                // ─── Add Announcement ─────────────────────────────────────────
                 composable(ElderRoute.AddAnnouncement.route) {
                     val vm: NewsViewModel = viewModel(factory = factory)
                     AddAnnouncementScreen(
@@ -269,6 +299,7 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                     )
                 }
 
+                // ─── Create Elder ─────────────────────────────────────────────
                 composable(ElderRoute.CreateElder.route) {
                     CreateElderScreen(
                         viewModel = authViewModel,
@@ -278,10 +309,12 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                     )
                 }
 
+                // ─── Emergency Phones ─────────────────────────────────────────
                 composable(ElderRoute.EmergencyPhones.route) {
                     EmergencyPhonesScreen()
                 }
 
+                // ─── Statistics (placeholder) ─────────────────────────────────
                 composable(ElderRoute.Statistics.route) {
                     Box(
                         modifier = Modifier
@@ -289,11 +322,14 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
                             .background(MaterialTheme.colorScheme.background),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("Στατιστικά (σύντομα)",
-                            style = MaterialTheme.typography.headlineSmall)
+                        Text(
+                            "Στατιστικά (σύντομα)",
+                            style = MaterialTheme.typography.headlineSmall
+                        )
                     }
                 }
 
+                // ─── Video Call / Call Options ────────────────────────────────
                 composable(
                     route = ElderRoute.VideoCall.route,
                     arguments = listOf(navArgument("contactId") { type = NavType.LongType })
@@ -311,6 +347,10 @@ private fun MainAppNavGraph(authViewModel: AuthViewModel) {
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Drawer Content
+// ─────────────────────────────────────────────────────────────────────────────
+
 @Composable
 private fun ElderDrawerContent(
     userName: String,
@@ -320,6 +360,7 @@ private fun ElderDrawerContent(
     onLogout: () -> Unit
 ) {
     ModalDrawerSheet(drawerContainerColor = MaterialTheme.colorScheme.surface) {
+        // Header με avatar + όνομα
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -356,12 +397,16 @@ private fun ElderDrawerContent(
 
         Spacer(Modifier.height(8.dp))
 
+        // Κύρια items (φιλτραρισμένα ανά role)
         filterDrawerItems(mainDrawerItems, userRole).forEach { item ->
             NavigationDrawerItem(
                 icon = { Icon(item.icon, null, Modifier.size(28.dp)) },
                 label = {
-                    Text(item.label, style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold)
+                    Text(
+                        item.label,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                 },
                 selected = currentRoute == item.route,
                 onClick = { onItemClick(item.route) },
@@ -369,20 +414,19 @@ private fun ElderDrawerContent(
             )
         }
 
+        // Extra items
         val filteredExtras = filterDrawerItems(extraDrawerItems, userRole)
         if (filteredExtras.isNotEmpty()) {
             HorizontalDivider(
                 modifier = Modifier.padding(vertical = 12.dp, horizontal = 16.dp),
                 color = MaterialTheme.colorScheme.outlineVariant
             )
-
             Text(
                 text = "Γρήγορες Ενέργειες",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 28.dp, vertical = 8.dp)
             )
-
             filteredExtras.forEach { item ->
                 NavigationDrawerItem(
                     icon = { Icon(item.icon, null, Modifier.size(28.dp)) },
@@ -399,12 +443,15 @@ private fun ElderDrawerContent(
             color = MaterialTheme.colorScheme.outlineVariant
         )
 
+        // Logout
         NavigationDrawerItem(
             icon = { Icon(Icons.Filled.Logout, null, Modifier.size(28.dp)) },
             label = {
-                Text("Αποσύνδεση",
+                Text(
+                    "Αποσύνδεση",
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.error)
+                    color = MaterialTheme.colorScheme.error
+                )
             },
             selected = false,
             onClick = onLogout,
@@ -415,12 +462,16 @@ private fun ElderDrawerContent(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
 private fun getScreenTitle(route: String?): String = when (route) {
-    ElderRoute.Home.route -> "Αρχική"
-    ElderRoute.Contacts.route -> "Επαφές"
-    ElderRoute.News.route -> "Νέα Δήμου"
-    ElderRoute.MoodCheck.route -> "Πώς Νιώθεις"
+    ElderRoute.Home.route          -> "Αρχική"
+    ElderRoute.Contacts.route      -> "Επαφές"
+    ElderRoute.News.route          -> "Νέα Δήμου"
+    ElderRoute.MoodCheck.route     -> "Πώς Νιώθεις"
     ElderRoute.EmergencyPhones.route -> "Έκτακτη Ανάγκη"
-    ElderRoute.Statistics.route -> "Στατιστικά"
-    else -> "Elder-Connect"
+    ElderRoute.Statistics.route    -> "Στατιστικά"
+    else                           -> "Elder-Connect"
 }

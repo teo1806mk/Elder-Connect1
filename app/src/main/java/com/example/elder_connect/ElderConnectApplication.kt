@@ -33,7 +33,7 @@ class ElderConnectApplication : Application() {
 
     // Auth Service
     val authService: AuthService by lazy {
-        AuthService(firestoreService)
+        AuthService()
     }
 
     // User Sync Service (συνδέει Firebase με Room)

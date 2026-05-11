@@ -27,6 +27,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 import com.example.elder_connect.data.entities.Contact
 import com.example.elder_connect.ui.theme.ElderGreen
 import com.example.elder_connect.ui.theme.ElderRed
@@ -66,6 +68,7 @@ fun HomeScreen(
     if (isLandscape) {
         HomeScreenLandscape(
             userName = user?.fullName ?: "",
+            profilePictureUri = user?.profilePictureUri,
             greeting = viewModel.getGreeting(),
             favorites = favorites,
             onContactClick = onContactClick,
@@ -78,6 +81,7 @@ fun HomeScreen(
     } else {
         HomeScreenPortrait(
             userName = user?.fullName ?: "",
+            profilePictureUri = user?.profilePictureUri,
             greeting = viewModel.getGreeting(),
             favorites = favorites,
             onContactClick = onContactClick,
@@ -94,6 +98,7 @@ fun HomeScreen(
 @Composable
 private fun HomeScreenPortrait(
     userName: String,
+    profilePictureUri: String?,
     greeting: String,
     favorites: List<Contact>,
     onContactClick: (Contact) -> Unit,
@@ -108,7 +113,7 @@ private fun HomeScreenPortrait(
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
     ) {
-        GreetingCard(greeting = greeting, userName = userName, compact = false)
+        GreetingCard(greeting = greeting, userName = userName, profilePictureUri = profilePictureUri, compact = false)
 
         Spacer(Modifier.height(24.dp))
 
@@ -186,6 +191,7 @@ private fun HomeScreenPortrait(
 @Composable
 private fun HomeScreenLandscape(
     userName: String,
+    profilePictureUri: String?,
     greeting: String,
     favorites: List<Contact>,
     onContactClick: (Contact) -> Unit,
@@ -202,7 +208,7 @@ private fun HomeScreenLandscape(
             .padding(16.dp)
     ) {
         // Compact greeting πάνω-πάνω (μία γραμμή)
-        GreetingCard(greeting = greeting, userName = userName, compact = true)
+        GreetingCard(greeting = greeting, userName = userName, profilePictureUri = profilePictureUri, compact = true)
 
         Spacer(Modifier.height(16.dp))
 
@@ -312,7 +318,7 @@ private fun HomeScreenLandscape(
    ================================================================ */
 
 @Composable
-private fun GreetingCard(greeting: String, userName: String, compact: Boolean) {
+private fun GreetingCard(greeting: String, userName: String, profilePictureUri: String?, compact: Boolean) {
     val today = remember_today()
 
     Surface(
@@ -331,13 +337,22 @@ private fun GreetingCard(greeting: String, userName: String, compact: Boolean) {
                     .background(MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = userName.take(1).ifEmpty { "?" },
-                    style = if (compact) MaterialTheme.typography.titleLarge
-                    else MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontWeight = FontWeight.Bold
-                )
+                if (!profilePictureUri.isNullOrBlank()) {
+                    AsyncImage(
+                        model = profilePictureUri,
+                        contentDescription = "Profile Picture",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        text = userName.take(1).ifEmpty { "?" },
+                        style = if (compact) MaterialTheme.typography.titleLarge
+                        else MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Spacer(Modifier.width(if (compact) 12.dp else 16.dp))
@@ -378,16 +393,25 @@ private fun FavoriteContactCard(
                 modifier = Modifier
                     .size(96.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
                     .border(3.dp, MaterialTheme.colorScheme.primary, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = contact.name.take(1),
-                    style = MaterialTheme.typography.displayMedium,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    fontWeight = FontWeight.Bold
-                )
+                if (!contact.avatarResource.isNullOrBlank()) {
+                    AsyncImage(
+                        model = contact.avatarResource,
+                        contentDescription = contact.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        text = contact.name.take(1),
+                        style = MaterialTheme.typography.displayMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
             Box(
                 modifier = Modifier
@@ -443,11 +467,24 @@ private fun FavoriteContactCardCompact(
                     modifier = Modifier
                         .size(56.dp)
                         .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary),
+                        .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(contact.name.take(1), style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimary, fontWeight = FontWeight.Bold)
+                    if (!contact.avatarResource.isNullOrBlank()) {
+                        AsyncImage(
+                            model = contact.avatarResource,
+                            contentDescription = contact.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Text(
+                            text = contact.name.take(1),
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
                 Box(
                     modifier = Modifier

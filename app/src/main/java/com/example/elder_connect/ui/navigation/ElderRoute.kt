@@ -13,7 +13,7 @@ sealed class ElderRoute(val route: String) {
     data object Login : ElderRoute("login")
     data object Register : ElderRoute("register")
     data object CreateElder : ElderRoute("create_elder")
-
+    data object Profile         : ElderRoute("profile")
     // Main app
     data object Home : ElderRoute("home")
     data object Contacts : ElderRoute("contacts")
@@ -25,6 +25,7 @@ sealed class ElderRoute(val route: String) {
     data object EditContact : ElderRoute("contact/edit/{contactId}") {
         fun createRoute(contactId: Long) = "contact/edit/$contactId"
     }
+
 
     data object AddAnnouncement : ElderRoute("announcement/new")  // ΝΕΟ
 

@@ -14,17 +14,19 @@ import kotlinx.coroutines.launch
  * Κεντρικό ViewModel για το user session.
  *
  * Διαχειρίζεται:
- * - Το Firebase user profile (από Firestore)
- * - Το Room user ID (για foreign keys)
- * - Συγχρονισμός μεταξύ των δύο
+ * - Το Firebase/Elder user profile (από Firestore)
+ * - Το Room user (για foreign keys στις επαφές / mood entries)
+ * - Συγχρονισμός μεταξύ Firestore ↔ Room
  *
- * Όλα τα άλλα ViewModels πρέπει να παίρνουν τον user από εδώ.
+ * ΣΗΜΕΙΩΣΗ: Δέχεται μόνο UserProfile — το uid εξάγεται από profile.uid.
+ * Αυτό καλύπτει και Firebase Auth users (uid = Firebase UID)
+ * και Elder users (uid = "elder_XXXXXX").
  */
 class SessionViewModel(
     private val userSyncService: UserSyncService
 ) : ViewModel() {
 
-    // Firebase profile (από Firestore)
+    // Firebase/Elder profile
     private val _userProfile = MutableStateFlow<UserProfile?>(null)
     val userProfile: StateFlow<UserProfile?> = _userProfile.asStateFlow()
 
@@ -37,25 +39,23 @@ class SessionViewModel(
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
     /**
-     * Καλείται όταν ο χρήστης κάνει login.
-     * Συγχρονίζει το Firebase profile με τη Room.
+     * Καλείται μετά από επιτυχές login.
+     *
+     * Χρησιμοποιεί profile.uid για sync — λειτουργεί για ΟΛΑ τα role types:
+     *  - ADMIN / USER : profile.uid = Firebase Auth UID
+     *  - ELDER        : profile.uid = "elder_XXXXXX"
      */
-    fun onLoginSuccess(firebaseUid: String, profile: UserProfile) {
+    fun onLoginSuccess(profile: UserProfile) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                // Συγχρονισμός Firebase → Room
-                val roomUserId = userSyncService.syncUser(firebaseUid, profile)
-
-                // Φόρτωση του Room user
-                val roomUser = userSyncService.getCurrentLocalUser()
-
-                // Update state
+                // Sync Firestore profile → Room
+                val roomUser = userSyncService.syncUser(profile.uid, profile)
                 _userProfile.value = profile
                 _localUser.value = roomUser
             } catch (e: Exception) {
                 e.printStackTrace()
-                // Σε περίπτωση error, τουλάχιστον έχουμε το profile
+                // Τουλάχιστον κρατάμε το profile
                 _userProfile.value = profile
             } finally {
                 _isLoading.value = false
@@ -64,48 +64,17 @@ class SessionViewModel(
     }
 
     /**
-     * Καλείται όταν ο χρήστης κάνει logout.
-     * Καθαρίζει το session state.
+     * Καλείται κατά το logout. Καθαρίζει όλο το session state.
      */
     fun onLogout() {
         _userProfile.value = null
         _localUser.value = null
     }
 
-    /**
-     * Επαναφόρτωση του τρέχοντος user (για refresh)
-     */
-    fun refresh() {
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val roomUser = userSyncService.getCurrentLocalUser()
-                _localUser.value = roomUser
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
+    // ─── Helpers ──────────────────────────────────────────────────
 
-    /**
-     * Helper: Επιστρέφει το Room user ID (για ViewModels που το χρειάζονται)
-     */
     fun getRoomUserId(): Long? = _localUser.value?.id
-
-    /**
-     * Helper: Είναι Admin ο τρέχων χρήστης;
-     */
     fun isAdmin(): Boolean = _userProfile.value?.role == "ADMIN"
-
-    /**
-     * Helper: Είναι Elder ο τρέχων χρήστης;
-     */
     fun isElder(): Boolean = _userProfile.value?.role == "ELDER"
-
-    /**
-     * Helper: Είναι Caregiver ο τρέχων χρήστης;
-     */
     fun isCaregiver(): Boolean = _userProfile.value?.role == "USER"
 }

@@ -18,6 +18,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE userId = :userId AND name LIKE '%' || :query || '%'")
     fun searchContacts(userId: Long, query: String): Flow<List<Contact>>
 
+    @Query("SELECT * FROM contacts WHERE id = :contactId")
+    suspend fun getContactById(contactId: Long): Contact?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(contact: Contact): Long
 

@@ -16,6 +16,9 @@ interface MoodEntryDao {
     @Query("SELECT * FROM mood_entries WHERE userId = :userId AND mood IN (:negativeMoods) ORDER BY timestamp DESC LIMIT :limit")
     fun getRecentNegativeMoods(userId: Long, negativeMoods: List<MoodType>, limit: Int): Flow<List<MoodEntry>>
 
+    @Query("SELECT * FROM mood_entries WHERE userId = :userId ORDER BY timestamp DESC")
+    fun getAllMoodsByUser(userId: Long): Flow<List<MoodEntry>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entry: MoodEntry): Long
 

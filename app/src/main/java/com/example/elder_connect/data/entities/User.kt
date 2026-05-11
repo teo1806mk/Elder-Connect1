@@ -35,6 +35,11 @@ data class User(
     val email: String? = null,
 
     /**
+     * URI για την εικόνα προφίλ του χρήστη
+     */
+    val profilePictureUri: String? = null,
+
+    /**
      * Ημερομηνία δημιουργίας (timestamp σε milliseconds)
      */
     val createdAt: Long = System.currentTimeMillis()

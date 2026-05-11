@@ -3,14 +3,17 @@ package com.example.elder_connect.data.repository
 import com.example.elder_connect.data.dao.ContactDao
 import com.example.elder_connect.data.dao.MoodEntryDao
 import com.example.elder_connect.data.dao.UserDao
+import com.example.elder_connect.data.dao.RelationshipCount
 import com.example.elder_connect.data.entities.Contact
 import com.example.elder_connect.data.entities.MoodEntry
 import com.example.elder_connect.data.entities.User
-import com.example.elder_connect.data.entities.Mood
+import com.example.elder_connect.data.entities.MoodType
 import com.example.elder_connect.data.firestore.FirestoreService
 import com.example.elder_connect.data.firestore.Announcement
+import com.example.elder_connect.data.firestore.Interest
 import com.example.elder_connect.data.sync.UserSyncService
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.*
 import java.util.Date
 
 /**
@@ -24,10 +27,23 @@ class ElderConnectRepository(
     private val contactDao: ContactDao,
     private val moodEntryDao: MoodEntryDao,
     private val firestoreService: FirestoreService,
-    val userSyncService: UserSyncService  // ← ΝΕΟΣ
+    val userSyncService: UserSyncService
 ) {
 
     // ==================== USER OPERATIONS ====================
+
+    /**
+     * Reactive Flow για τον τρέχοντα συνδεδεμένο χρήστη.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentUser: Flow<User?> = userSyncService.authService.authStateFlow()
+        .flatMapLatest { firebaseUser ->
+            if (firebaseUser != null) {
+                userDao.observeByFirebaseUid(firebaseUser.uid)
+            } else {
+                flowOf(null)
+            }
+        }
 
     /**
      * Επιστρέφει τον τρέχοντα local user (από Room)
@@ -52,7 +68,7 @@ class ElderConnectRepository(
     fun getFavoriteVideoCallContacts(userId: Long): Flow<List<Contact>> =
         contactDao.getFavoriteVideoCallContacts(userId)
 
-    suspend fun getContactCountByRelationship(userId: Long): List<Pair<String, Int>> =
+    fun getContactCountByRelationship(userId: Long): Flow<List<RelationshipCount>> =
         contactDao.getContactCountByRelationship(userId)
 
     fun searchContacts(userId: Long, query: String): Flow<List<Contact>> =
@@ -62,56 +78,56 @@ class ElderConnectRepository(
         contactDao.getContactById(contactId)
 
     suspend fun insertContact(contact: Contact): Long =
-        contactDao.insertContact(contact)
+        contactDao.insert(contact)
 
     suspend fun updateContact(contact: Contact) =
-        contactDao.updateContact(contact)
+        contactDao.update(contact)
 
     suspend fun deleteContact(contact: Contact) =
-        contactDao.deleteContact(contact)
+        contactDao.delete(contact)
 
     // ==================== MOOD OPERATIONS ====================
 
     fun getMoodsInRange(userId: Long, startDate: Date, endDate: Date): Flow<List<MoodEntry>> =
-        moodEntryDao.getMoodsInRange(userId, startDate, endDate)
+        moodEntryDao.getMoodsInRange(userId, startDate.time, endDate.time)
 
     fun getRecentNegativeMoods(userId: Long, limit: Int): Flow<List<MoodEntry>> =
-        moodEntryDao.getRecentNegativeMoods(userId, listOf(Mood.SAD, Mood.ANGRY), limit)
+        moodEntryDao.getRecentNegativeMoods(userId, listOf(MoodType.OXI_KALA, MoodType.ASXIMA), limit)
 
-    suspend fun getLatestMood(userId: Long): MoodEntry? =
+    fun getLatestMood(userId: Long): Flow<MoodEntry?> =
         moodEntryDao.getLatestMood(userId)
 
     suspend fun insertMoodEntry(moodEntry: MoodEntry): Long =
-        moodEntryDao.insertMoodEntry(moodEntry)
+        moodEntryDao.insert(moodEntry)
 
-    suspend fun getAllMoodsByUser(userId: Long): List<MoodEntry> =
+    fun getAllMoodsByUser(userId: Long): Flow<List<MoodEntry>> =
         moodEntryDao.getAllMoodsByUser(userId)
 
     // ==================== FIRESTORE OPERATIONS ====================
 
     // Announcements
-    suspend fun getAllAnnouncements(): List<Announcement> =
+    fun getAllAnnouncements(): Flow<List<Announcement>> =
         firestoreService.getAllAnnouncements()
 
-    suspend fun getAnnouncementsByCategory(category: String): List<Announcement> =
+    fun getAnnouncementsByCategory(category: String): Flow<List<Announcement>> =
         firestoreService.getAnnouncementsByCategory(category)
 
-    suspend fun getRecentAnnouncements(limit: Int): List<Announcement> =
-        firestoreService.getRecentAnnouncements(limit)
+    fun getUpcomingEvents(): Flow<List<Announcement>> =
+        firestoreService.getUpcomingEvents()
 
-    suspend fun addAnnouncement(announcement: Announcement): String =
+    suspend fun addAnnouncement(announcement: Announcement): Result<String> =
         firestoreService.addAnnouncement(announcement)
 
-    suspend fun updateAnnouncement(id: String, announcement: Announcement) =
-        firestoreService.updateAnnouncement(id, announcement)
+    suspend fun updateAnnouncement(announcement: Announcement): Result<Unit> =
+        firestoreService.updateAnnouncement(announcement)
 
-    suspend fun deleteAnnouncement(id: String) =
+    suspend fun deleteAnnouncement(id: String): Result<Unit> =
         firestoreService.deleteAnnouncement(id)
 
     // Interests
-    suspend fun declareInterest(announcementId: String, userId: String, userName: String) =
-        firestoreService.declareInterest(announcementId, userId, userName)
+    suspend fun setInterest(announcementId: String, userId: Long, userName: String, isInterested: Boolean) =
+        firestoreService.setInterest(announcementId, userId, userName, isInterested)
 
-    suspend fun getInterestsForAnnouncement(announcementId: String): List<Map<String, Any>> =
-        firestoreService.getInterestsForAnnouncement(announcementId)
+    fun getUserInterest(announcementId: String, userId: Long): Flow<Interest?> =
+        firestoreService.getUserInterest(announcementId, userId)
 }
